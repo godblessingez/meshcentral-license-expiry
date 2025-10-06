@@ -117,4 +117,3 @@ load();</script>`;}
   plugin.server_startup = function(){ try{ sweep().catch(function(){}); schedule(); log('startup ok'); } catch(e){ log('startup',e); } };
   return plugin;
 };
-JS
