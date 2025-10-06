@@ -1,6 +1,6 @@
 {
   "name": "LicenseExpiry",
-  "shortName": "license-expiry",
+  "shortName": "licenseexpiry",
   "version": "0.3.0",
   "author": "You",
   "description": "Auto-lock MeshCentral users on expiry + daily scheduler (00:00 Europe/Moscow) + simple admin page.",
@@ -12,6 +12,7 @@
   "downloadUrl": "https://github.com/godblessingez/meshcentral-license-expiry/archive/refs/tags/0.3.0.zip",
   "repository": { "type": "git", "url": "https://github.com/godblessingez/meshcentral-license-expiry.git" }
 }
+
 
 
 
