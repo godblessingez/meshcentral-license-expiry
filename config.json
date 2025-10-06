@@ -9,6 +9,7 @@
   "homepage": "https://github.com/godblessingez/meshcentral-license-expiry",
   "changelogUrl": "https://github.com/godblessingez/meshcentral-license-expiry/releases",
   "configUrl": "https://raw.githubusercontent.com/godblessingez/meshcentral-license-expiry/main/config.json",
-  "downloadUrl": "https://github.com/godblessingez/meshcentral-license-expiry/releases/latest/download/licenseexpiry.zip",
+  "downloadUrl": "https://github.com/godblessingez/meshcentral-license-expiry/main/arhive/licenseexpiry.zip",
   "repository": { "type": "git", "url": "https://github.com/godblessingez/meshcentral-license-expiry.git" }
 }
+
