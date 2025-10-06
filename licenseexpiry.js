@@ -51,4 +51,3 @@ exports['licenseexpiry'] = function (parent) {
 
   return plugin;
 };
-
