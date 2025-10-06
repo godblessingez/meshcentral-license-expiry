@@ -1,46 +1,46 @@
 // meshcentral-data/plugins/license-expiry/license-expiry.js
-// Автолок пользователей по дате: ежедневно в 00:00 Europe/Moscow.
-// Простая админка: /plugins/license-expiry/  (только для серверных/фулл-админов)
+// Автолок пользователей по дате — ежедневно в 00:00 Europe/Moscow.
+// Админка: /plugins/license-expiry/ (пускаем Full/Server/Site админов).
+// Диагностика прав: /plugins/license-expiry/whoami
 //
-// Даты храним в: meshcentral-data/license-expiry.json
-// Формат: { "domain/userid": "ISO8601", ... }  пример: " /ivan": "2026-01-31T23:59:59+03:00"
+// Даты храним в meshcentral-data/license-expiry.json
+// Формат: { "domain/userid": "ISO8601" }
 
 'use strict';
 
-module.exports = function(parent) {
-  const fs   = require('fs');
+module.exports = function (parent) {
+  const fs = require('fs');
   const path = require('path');
 
   const plugin = {};
   const BASE = '/plugins/license-expiry/';
-  const CFG  = { timezone: 'Europe/Moscow', runAt: '00:00' };
+  const CFG = { timezone: 'Europe/Moscow', runAt: '00:00' };
   const DATA_FILE = path.join((parent && parent.datapath) || process.cwd(), 'license-expiry.json');
 
   // ---------- утилиты ----------
-  function log(){ try { parent.debug.apply(parent, ['license-expiry:'].concat([].slice.call(arguments))); } catch {} }
-
-  function loadDB() {
-    try {
-      return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
-    } catch { return {}; }
+  function log() {
+    try { parent.debug.apply(parent, ['license-expiry:'].concat([].slice.call(arguments))); } catch {}
   }
-  function saveDB(db) {
-    try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); }
-    catch (e) { log('saveDB error', e); }
-  }
+  function loadDB() { try { return JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')); } catch { return {}; } }
+  function saveDB(db) { try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); } catch (e) { log('saveDB error', e); } }
 
-  // Пускаем: Full Administrator / Server admin / любые siteadmin с полными правами
+  // Универсальная проверка прав — пускаем Full/Server admin и «siteadmin» с полными правами
   function isSrvAdmin(req) {
     try {
-      const u = req.user || req.sessionUser || (req.session && req.session.user);
+      const sess = req.session || {};
+      const u = req.user || req.sessionUser || sess.user || {
+        name: sess.userid, domain: sess.domain,
+        fulladmin: sess.fulladmin, serveradmin: sess.serveradmin, siteadmin: sess.siteadmin
+      };
       if (!u) return false;
 
-      if (u.fulladmin === true) return true;                       // MeshCentral 1.1.x "Full Administrator"
-      if (u.serveradmin === true) return true;                     // некоторые сборки помечают так
-      if (u.siteadmin === true) return true;                       // bool
-      if (typeof u.siteadmin === 'number' && u.siteadmin > 0) return true;     // маска прав
-      if (typeof u.siteadmin === 'object' && (u.siteadmin.serveradmin || u.siteadmin.rights === 0xFFFFFFFF)) return true;
-
+      if (u.fulladmin === true || u.serveradmin === true) return true;                       // явные флаги
+      if (u.siteadmin === true) return true;                                                  // bool
+      if (typeof u.siteadmin === 'number' && (u.siteadmin >>> 0) === 0xFFFFFFFF) return true; // маска 0xFFFFFFFF
+      if (typeof u.siteadmin === 'object') {
+        if (u.siteadmin.serveradmin === true) return true;
+        if ((u.siteadmin.rights >>> 0) === 0xFFFFFFFF) return true;
+      }
       return false;
     } catch { return false; }
   }
@@ -54,17 +54,14 @@ module.exports = function(parent) {
         for (const k in um.users) {
           const u = um.users[k];
           out.push({
-            userid:  u.name || u.userid || u._id,
-            domain:  u.domain || '',
-            locked:  !!u.locked || !!(u.siteadmin && u.siteadmin.locked)
+            userid: u.name || u.userid || u._id,
+            domain: u.domain || '',
+            locked: !!u.locked || !!(u.siteadmin && u.siteadmin.locked)
           });
         }
       }
       return out;
-    } catch (e) {
-      log('listUsers error', e);
-      return [];
-    }
+    } catch (e) { log('listUsers error', e); return []; }
   }
 
   // ---------- Lock/Unlock ----------
@@ -77,22 +74,18 @@ module.exports = function(parent) {
       }
     } catch (e) { log('SetUserLocked fail', e); }
 
-    // Фолбэк через БД — на случай отсутствия SetUserLocked
+    // Фолбэк через БД
     try {
       const u = Object.assign({}, user);
       u.locked = !!flag;
       if (u.siteadmin) u.siteadmin.locked = !!flag;
       if (parent.db && typeof parent.db.SetUser === 'function') {
-        if (parent.db.SetUser.length >= 2) {
-          await new Promise((res, rej) => parent.db.SetUser(u, (err) => err ? rej(err) : res(true)));
-        } else {
-          parent.db.SetUser(u);
-        }
+        if (parent.db.SetUser.length >= 2) { await new Promise((res, rej) => parent.db.SetUser(u, (err) => err ? rej(err) : res(true))); }
+        else { parent.db.SetUser(u); }
         try { parent.webserver && parent.webserver.disconnectUserSessions && parent.webserver.disconnectUserSessions(user); } catch {}
         return true;
       }
     } catch (e) { log('DB fallback fail', e); }
-
     return false;
   }
 
@@ -102,59 +95,42 @@ module.exports = function(parent) {
       const db = loadDB();
       const now = Date.now();
       const users = listUsers();
-
       for (const u of users) {
-        const key   = `${u.domain}/${u.userid}`;
+        const key = `${u.domain}/${u.userid}`;
         const until = db[key];
-        const exp   = until ? Date.parse(until) : NaN;
-
+        const exp = until ? Date.parse(until) : NaN;
         if (isFinite(exp) && exp <= now && !u.locked) {
           await setLocked(u, true);
           log(`locked ${key} (expired ${until})`);
         }
       }
-    } catch (e) {
-      log('sweep error', e);
-    }
+    } catch (e) { log('sweep error', e); }
   }
 
-  // точное «до полуночи по Москве»
+  // точная полуночь по Москве
   function msUntilTzTime(tz, hhmm) {
     try {
       const [TH, TM] = hhmm.split(':').map(Number);
-      const fmt = new Intl.DateTimeFormat('en-GB', {
-        timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit'
-      });
+      const fmt = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const parts = Object.fromEntries(fmt.formatToParts(new Date()).map(p => [p.type, p.value]));
       const h = +parts.hour, m = +parts.minute, s = +parts.second;
-      const nowSec = h*3600 + m*60 + s;
-      const targetSec = TH*3600 + TM*60;
+      const nowSec = h * 3600 + m * 60 + s;
+      const targetSec = TH * 3600 + TM * 60;
       const diffSec = targetSec > nowSec ? (targetSec - nowSec) : (86400 - (nowSec - targetSec));
       return diffSec * 1000;
-    } catch {
-      return 60 * 1000; // запасная минута
-    }
+    } catch { return 60 * 1000; }
   }
   function scheduleNextRun() {
     try {
       const delay = msUntilTzTime(CFG.timezone, CFG.runAt);
       const nextAt = new Date(Date.now() + delay);
-      log(`next sweep at ${nextAt.toString()} (tz ${CFG.timezone} ${CFG.runAt})`);
-      setTimeout(async () => {
-        try { await sweep(); } catch (e) { log('sweep(timer) error', e); }
-        scheduleNextRun(); // планируем следующие сутки
-      }, delay);
+      log(`next sweep at ${nextAt.toString()} (${CFG.timezone} ${CFG.runAt})`);
+      setTimeout(async () => { try { await sweep(); } catch (e) { log('sweep(timer) error', e); } scheduleNextRun(); }, delay);
     } catch (e) { log('schedule error', e); }
   }
 
-  // ---------- HTTP: админка ----------
-  function ensureBody(req, cb) {
-    try {
-      let b = '';
-      req.on('data', d => b += d);
-      req.on('end', () => { try { cb(JSON.parse(b || '{}')); } catch { cb({}); } });
-    } catch { cb({}); }
-  }
+  // ---------- HTTP ----------
+  function ensureBody(req, cb) { try { let b=''; req.on('data', d => b += d); req.on('end', () => { try { cb(JSON.parse(b || '{}')); } catch { cb({}); } }); } catch { cb({}); } }
 
   function adminHtml() {
     return `<!doctype html><html><head><meta charset="utf-8"/>
@@ -202,12 +178,28 @@ load();
 </script></body></html>`;
   }
 
-  plugin.hook_setupHttpHandlers = function() {
+  plugin.hook_setupHttpHandlers = function () {
     try {
       const app = parent && parent.webserver && parent.webserver.app;
       if (!app) return;
 
-      // Страница админки
+      // кто я (диагностика прав/флагов сессии)
+      app.get(BASE + 'whoami', (req, res) => {
+        const sess = req.session || {};
+        const u = req.user || req.sessionUser || sess.user || {};
+        res.json({
+          user: u.name || u.userid || sess.userid || null,
+          domain: u.domain || sess.domain || null,
+          fulladmin: !!(u.fulladmin ?? sess.fulladmin),
+          serveradmin: !!(u.serveradmin ?? sess.serveradmin),
+          siteadmin: (u.siteadmin ?? sess.siteadmin) ?? null
+        });
+      });
+
+      // health
+      app.get(BASE + 'health', (req, res) => res.end('OK'));
+
+      // страница админки
       app.get(BASE, (req, res) => {
         if (!isSrvAdmin(req)) return res.status(401).send('Unauthorized');
         res.set('Content-Type', 'text/html; charset=utf-8');
@@ -249,22 +241,15 @@ load();
         await sweep(); res.json({ ok: 1 });
       });
 
-      // health-пинг на всякий (можно убрать)
-      app.get(BASE + 'health', (req, res) => res.end('OK'));
-
-    } catch (e) {
-      log('hook_setupHttpHandlers error', e);
-    }
+    } catch (e) { log('hook_setupHttpHandlers error', e); }
   };
 
-  plugin.server_startup = function() {
+  plugin.server_startup = function () {
     try {
-      sweep().catch(()=>{});
+      sweep().catch(() => {});
       scheduleNextRun();
       log('startup ok');
-    } catch (e) {
-      log('startup error', e);
-    }
+    } catch (e) { log('startup error', e); }
   };
 
   return plugin;
