@@ -9,8 +9,9 @@
   "homepage": "https://github.com/godblessingez/meshcentral-license-expiry",
   "changelogUrl": "https://github.com/godblessingez/meshcentral-license-expiry/releases",
   "configUrl": "https://raw.githubusercontent.com/godblessingez/meshcentral-license-expiry/main/config.json",
-  "downloadUrl": "https://github.com/godblessingez/meshcentral-license-expiry/archive/refs/tags/0.4.0.zip",
+  "downloadUrl": "https://github.com/godblessingez/meshcentral-license-expiry/archive/refs/tags/0.5.0.zip",
   "repository": { "type": "git", "url": "https://github.com/godblessingez/meshcentral-license-expiry.git" }
 }
+
 
 
