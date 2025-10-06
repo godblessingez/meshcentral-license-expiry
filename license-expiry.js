@@ -77,7 +77,23 @@ module.exports = function(parent) {
   }
 
   function ensureBody(req, cb){ try{ let b=''; req.on('data',d=>b+=d); req.on('end',()=>{ try{ cb(JSON.parse(b||'{}')); }catch{ cb({}); } }); }catch(e){ cb({}); } }
-  function isSrvAdmin(req){ try{ const u=req.user||req.sessionUser||(req.session&&req.session.user); return !!(u && (u.serveradmin || (u.siteadmin && u.siteadmin.serveradmin))); }catch{ return false; } }
+  function isSrvAdmin(req){
+  try {
+    // user может лежать в разных полях в зависимости от версии
+    const u = req.user || req.sessionUser || (req.session && req.session.user);
+    if (!u) return false;
+
+    // покрываем все варианты флагов у разных версий MeshCentral
+    if (u.fulladmin === true) return true;                 // 1.1.x: "Full Administrator"
+    if (u.serveradmin === true) return true;               // некоторые сборки
+    if (u.siteadmin === true) return true;                 // boolean
+    if (typeof u.siteadmin === 'number' && u.siteadmin > 0) return true;       // числовая маска (в т.ч. 0xFFFFFFFF)
+    if (typeof u.siteadmin === 'object' && (u.siteadmin.serveradmin || u.siteadmin.rights === 0xFFFFFFFF)) return true; // объект с правами
+
+    return false;
+  } catch { return false; }
+}
+
 
   function adminHtml(){
     return `<!doctype html><html><head><meta charset="utf-8"/><title>License Expiry</title>
@@ -118,3 +134,4 @@ load();</script></body></html>`;
   plugin.server_startup = function(){ try{ sweep().catch(()=>{}); scheduleNextRun(); log('startup ok'); }catch(e){ log('startup error',e); } };
   return plugin;
 };
+
