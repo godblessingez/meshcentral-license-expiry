@@ -16,7 +16,7 @@ exports['licenseexpiry'] = function (parent) {
       const prefixes = ['/'].concat(domains.map(d => '/' + d + '/'));
 
       prefixes.forEach(function (pref) {
-        const base = pref + 'plugins/license-expiry/';
+        const base = pref + 'plugins/licenseexpiry/';
 
         // /health — простой пинг
         app.get(base + 'health', function (req, res) {
@@ -46,8 +46,9 @@ exports['licenseexpiry'] = function (parent) {
   };
 
   plugin.server_startup = function () {
-    try { if (parent && parent.debug) parent.debug('license-expiry: whoami/health loaded'); } catch (e) {}
+    try { if (parent && parent.debug) parent.debug('licenseexpiry: whoami/health loaded'); } catch (e) {}
   };
 
   return plugin;
 };
+
